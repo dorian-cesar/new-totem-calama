@@ -1,0 +1,8 @@
+
+^XA
+^FO50,50^A0N,50,50^FDPatente:^FS
+^FO50,110^A0N,70,70^FDABC123^FS
+^FO50,200^A0N,40,40^FDHora: 12:00:40^FS
+^FO50,260^A0N,30,30^FDEste ticket se imprimió correctamente^FS
+~JK
+^XZ
