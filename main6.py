@@ -57,10 +57,11 @@ def print_ticket(patente):
 ^FO80,60^FDPatente:^FS
 ^CF0,100
 ^FO80,130^FD{patente}^FS
-^CF0,50
+^CF0,40
 ^FO80,260^FDHora: {hora_actual}^FS
-^FO60,330^GB700,2,2^FS
-^FO200,380^FDBienvenido al Parking!^FS
+^FO60,320^GB700,2,2^FS
+^CF0,35
+^FO150,360^FDBienvenido al Parking!^FS
 ^MMC,Y
 ~JK
 ^XZ
