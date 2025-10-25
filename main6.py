@@ -1,129 +1,96 @@
 import mysql.connector
 import requests
-import usb.core
-import usb.util
 import sys
 import time
+import subprocess
+from datetime import datetime
 
 # ================== CONFIGURACIÓN ==================
 DB_CONFIG = {
     "host": "ls-ac361eb6981fc8da3000dad63b382c39e5f1f3cd.cylsiewx0zgx.us-east-1.rds.amazonaws.com",
     "user": "dbmasteruser",
     "password": "CP7>2fobZp<7Kja!Efy3Q+~g:as2]rJD",
-    "database": "parkingAndenes",
-    "ssl_disabled": True
+    "database": "parkingAndenes"
 }
 
 API_URL = "https://zkteco.terminal-calama.com/zteco-backend/openEntrada.php"
+PRINTER_NAME = "ZebraRaw"
 # ===================================================
 
 def get_latest_parking_entry():
-    try:
-        conn = mysql.connector.connect(**DB_CONFIG)
-        cursor = conn.cursor()
-        query = """SELECT idmov, patente FROM movParking 
-                   WHERE estado = 'Ingresado' AND tipo = 'Parking'
-                   ORDER BY idmov DESC LIMIT 1"""
-        cursor.execute(query)
-        result = cursor.fetchone()
-        cursor.close()
-        conn.close()
-        return result
-    except Exception as e:
-        print(f"❌ Error en base de datos: {e}")
-        return None
+    conn = mysql.connector.connect(**DB_CONFIG)
+    cursor = conn.cursor()
+    query = """SELECT idmov, patente FROM movParking 
+               WHERE estado = 'Ingresado' AND tipo = 'Parking'
+               ORDER BY idmov DESC LIMIT 1"""
+    cursor.execute(query)
+    result = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    return result
 
 def update_parking_status(idmov):
-    try:
-        conn = mysql.connector.connect(**DB_CONFIG)
-        cursor = conn.cursor()
-        query = "UPDATE movParking SET estado = 'Insite' WHERE idmov = %s"
-        cursor.execute(query, (idmov,))
-        conn.commit()
-        cursor.close()
-        conn.close()
-        print("✅ Estado actualizado a 'Insite'")
-        return True
-    except Exception as e:
-        print(f"❌ Error actualizando estado: {e}")
-        return False
+    conn = mysql.connector.connect(**DB_CONFIG)
+    cursor = conn.cursor()
+    query = "UPDATE movParking SET estado = 'Insite' WHERE idmov = %s"
+    cursor.execute(query, (idmov,))
+    conn.commit()
+    cursor.close()
+    conn.close()
 
 def call_api():
     try:
         response = requests.get(API_URL, timeout=5)
         if response.status_code == 200:
             print("🌐 API llamada exitosamente.")
-            return True
         else:
             print(f"⚠️ Error en la API: {response.status_code}")
-            return False
     except Exception as e:
         print(f"❌ Error al llamar la API: {e}")
-        return False
 
 def print_ticket(patente):
-    printer = usb.core.find(idVendor=0x0483, idProduct=0x5743)  # ID de la KR403
-    if printer is None:
-        print("¡Error! Impresora no encontrada")
-        return
-
-    # Activar la interfaz
-    printer.set_configuration()
-    usb.util.claim_interface(printer, 0)
-
-    # Texto y código de barras
-    text = f"\nPatente: {patente}\n"
-    barcode = f"\x1D\x6B\x04{patente}\x00"  # Formato GS1-128 para KR403
-
-    # Enviar datos
-    printer.write(1, text.encode("ascii"))
-    printer.write(1, barcode.encode("ascii"))
-
-    # Liberar la impresora
-    usb.util.release_interface(printer, 0)
-    usb.util.dispose_resources(printer)
-    print("Ticket impreso correctamente")
+    """Imprime la patente y hora actual con corte automático"""
+    hora_actual = datetime.now().strftime("%d-%m-%Y %H:%M:%S")
+    zpl = f"""
+^XA
+^CF0,60
+^FO80,60^FDPatente:^FS
+^CF0,100
+^FO80,130^FD{patente}^FS
+^CF0,50
+^FO80,260^FDHora: {hora_actual}^FS
+^FO60,330^GB700,2,2^FS
+^FO200,380^FDBienvenido al Parking!^FS
+^MMC,Y
+~JK
+^XZ
+"""
+    try:
+        subprocess.run(
+            ["lp", "-d", PRINTER_NAME],
+            input=zpl.encode("utf-8"),
+            check=True
+        )
+        print(f"🖨️ Ticket impreso para {patente}")
+    except subprocess.CalledProcessError as e:
+        print(f"❌ Error al imprimir: {e}")
 
 def main():
-    print("=" * 50)
-    print("🚗 SISTEMA DE PARKING - IMPRESIÓN DE TICKETS")
-    print("=" * 50)
-    print("✅ Sistema iniciado. Presiona ENTER para procesar ingreso.")
-    print("⏹️  Ctrl+C para salir\n")
-    
+    print("✅ Sistema iniciado. Presiona ENTER en el dispositivo LinTx para procesar ingreso.\n")
     while True:
-        try:
-            input()  # Espera a que se presione Enter
-            print("\n🔘 Botón presionado, procesando...")
-            
-            entry = get_latest_parking_entry()
-            if entry:
-                idmov, patente = entry
-                print(f"🚗 Patente encontrada: {patente}")
-                
-                # Imprimir ticket
-                print_ticket(patente)
-                
-                # Actualizar estado en BD
-                if update_parking_status(idmov):
-                    # Llamar API
-                    if call_api():
-                        print("🎉 PROCESO COMPLETADO EXITOSAMENTE")
-                    else:
-                        print("⚠️  Proceso completado con error en API")
-                else:
-                    print("❌ Error al actualizar estado en BD")
-            else:
-                print("⚠️ No hay registros con estado 'Ingresado' y tipo 'Parking'.")
-            
-            print("\n📍 Esperando siguiente pulsación...\n")
-            
-        except KeyboardInterrupt:
-            print("\n👋 Sistema terminado por el usuario")
-            break
-        except Exception as e:
-            print(f"❌ Error inesperado: {e}")
-            print("\n📍 Reintentando...\n")
+        sys.stdin.readline()  # Espera a que se presione Enter
+        print("🔘 Botón presionado, procesando...")
+        entry = get_latest_parking_entry()
+        if entry:
+            idmov, patente = entry
+            print(f"Última patente ingresada: {patente}")
+            update_parking_status(idmov)
+            print("Estado actualizado a 'Insite'")
+            print_ticket(patente)
+            call_api()
+        else:
+            print("⚠️ No hay registros con estado 'Ingresado' y tipo 'Parking'.")
+        print("\nEsperando siguiente pulsación...\n")
 
 if __name__ == "__main__":
     main()
